@@ -9,8 +9,6 @@
 #   2. Profanity filtering
 #       removing profanity and other words you do not want to predict.
 
-library(tm)
-
 file.blogs <- "data/final/en_US/en_US.blogs.txt"
 file.news <- "data/final/en_US/en_US.news.txt"
 file.tweets <- "data/final/en_US/en_US.twitter.txt"
@@ -21,7 +19,30 @@ file.tweets <- "data/final/en_US/en_US.twitter.txt"
 tokenize.file <- function(file, lan = "en", enc = "UTF-8", lines = -1) {
     raw <- readLines(con = file, n = lines, encoding = enc)
     raw <- tolower(raw)
-    raw <- gsub("[^ a-z0-9.,;!?:'\"/()$€@£\t\n\r&%<>*_+~-]", "", raw)
+    # unify several common non-word-entities
+    # (based upon http://www.regular-expressions.info/)
+    # unify all URL's
+    raw <- gsub("(https?|ftp)://[^ ]+", "URL", raw)
+    # unify all email addresses
+    raw <- gsub("[^ ]+@[^ ]+\\.[^ \r\n\t.,;:'\"()?!]{2,}", "EMAIL", raw)
+    # unify all dates in format yyyy-[m]m-[d]d or [d]d-[m]m-yyyy
+    raw <- gsub (
+      paste (
+        "^((19|20)[0-9]{2}[- /.](0?[1-9]|1[012])[- /.](0?[1-9]|[12][0-9]|3[01])|",
+        "(0?[1-9]|[12][0-9]|3[01])[- /.](0?[1-9]|1[012])[- /.](19|20)[0-9]{2})$",
+        sep = ""
+      ),
+      "DATE",
+      raw
+    )
+    # replace all "$##" with "## dollars"
+    raw <- gsub("\\$([0-9]+)", " \\1 dollars", raw)
+    # replace all remaining $ characters with dollars string
+    raw <- gsub("\\$", " dollars ", raw)
+    # replace all dashes, slashes, and &'s with a space so that compound words are split
+    raw <- gsub("(-|/|&)", " ", raw)
+    # delete all rare special characters that might complicate our dictionary
+    raw <- gsub("[^ a-zA-Z0-9.,;!?:'\"/()$€@£\t\n\r&%<>_+~-]", "", raw)
     split <- unlist(strsplit(raw, "[ \r\n\t.,;:'\"()?!]"))
     return (
         split[split != ""]
@@ -34,54 +55,39 @@ tweets <- tokenize.file(file.tweets)
 
 counts <- table(c(blogs, news, tweets))
 
-special.chars <- c("/", "\\$", "€", "@", "£", "&", "%", "<", ">", "\\*", "_", "\\+", "~", "-")
+counts[c("EMAIL", "URL", "DATE")]
 
-special.char.counts <- sapply(special.chars, function(char) { length(grep(char, names(counts))) })
+special.chars <- c("\\$", "€", "@", "£", "%", "<", ">", "_", "\\+", "~")
 
-sort(special.char.counts, decreasing = TRUE)
+special.char.counts <- sapply(special.chars, function(char) { i <- grep(char, names(counts)) ; c(length(i), sum(counts[i])) })
 
-grep("[a-z]", grep("-", names(counts), value = TRUE), value = TRUE)
-# of 207884 can further words be split off
+special.char.counts
 
-grep("^[a-z]+-[a-z]+$", names(counts), value = TRUE)
-# out of which 136988 are assembled words (e.g. beat-boxer)
-
-x <- c("word", grep("^[a-z]+-[a-z]+$", names(counts), value = TRUE)[9997:10000], "term")
-y <- gsub("-", " ", x)
-unlist(strsplit(y, "[ \r\n\t.,;:'\"()?!]"))
-n <- names(counts)
-a <- grep("^[a-z]+-[a-z]+$", n, value = TRUE)
-# replace "word-word" with "word word"
-n[grep("^[a-z]+-[a-z]+$", n)] <- gsub("-", " ", n[grep("^[a-z]+-[a-z]+$", n)])
-b <- grep("^[a-z]+ [a-z]+$", n, value = TRUE)
-
-
-grep("/", names(counts), value = TRUE)
-
-grep("\\*", names(counts), value = TRUE)
-
+head(sort(counts[grep("\\$", names(counts))], decreasing = TRUE))
 grep("^([0-9]+([.,][0-9]+)?\\$|\\$[0-9]+([.,][0-9]+)?)-([0-9]+([.,][0-9]+)?\\$|\\$[0-9]+([.,][0-9]+)?)$", names(counts), value = TRUE)
 # 793 can be split into dollar ranges
 
-grep("&", names(counts), value = TRUE)
-
-grep("~", names(counts), value = TRUE)
-
-grep("<", names(counts), value = TRUE)
+grep("€", names(counts), value = TRUE)
 
 grep("@", names(counts), value = TRUE)
 
-grep("_", names(counts), value = TRUE)
-
-grep(">", names(counts), value = TRUE)
-
-grep("\\+", names(counts), value = TRUE)
+grep("£", names(counts), value = TRUE)
 
 grep("%", names(counts), value = TRUE)
 
-grep("£", names(counts), value = TRUE)
+grep("<", names(counts), value = TRUE)
 
-grep("€", names(counts), value = TRUE)
+grep(">", names(counts), value = TRUE)
+
+grep("_", names(counts), value = TRUE)
+
+grep("\\+", names(counts), value = TRUE)
+
+grep("~", names(counts), value = TRUE)
+
+# TODO currency handling
+# TODO number handling
+# TODO language handling (words might be split due to non-a-z characters)
 
 filter.words <- function(x, pattern) {
     return (
