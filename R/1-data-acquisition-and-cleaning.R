@@ -37,8 +37,10 @@ tokenize.file <- function(file, lan = "en", enc = "UTF-8", lines = -1) {
     )
     # replace all "$##" with "## dollars"
     raw <- gsub("\\$([0-9]+)", " \\1 dollars", raw)
-    # replace all remaining $ characters with dollars string
+    # replace all remaining currency characters with currency string
     raw <- gsub("\\$", " dollars ", raw)
+    raw <- gsub("€", " euros ", raw)
+    raw <- gsub("£", " pounds ", raw)
     # replace all dashes, slashes, and &'s with a space so that compound words are split
     raw <- gsub("(-|/|&)", " ", raw)
     # delete all rare special characters that might complicate our dictionary
@@ -57,21 +59,13 @@ counts <- table(c(blogs, news, tweets))
 
 counts[c("EMAIL", "URL", "DATE")]
 
-special.chars <- c("\\$", "€", "@", "£", "%", "<", ">", "_", "\\+", "~")
+special.chars <- c("@", "%", "<", ">", "_", "\\+", "~")
 
 special.char.counts <- sapply(special.chars, function(char) { i <- grep(char, names(counts)) ; c(length(i), sum(counts[i])) })
 
 special.char.counts
 
-head(sort(counts[grep("\\$", names(counts))], decreasing = TRUE))
-grep("^([0-9]+([.,][0-9]+)?\\$|\\$[0-9]+([.,][0-9]+)?)-([0-9]+([.,][0-9]+)?\\$|\\$[0-9]+([.,][0-9]+)?)$", names(counts), value = TRUE)
-# 793 can be split into dollar ranges
-
-grep("€", names(counts), value = TRUE)
-
 grep("@", names(counts), value = TRUE)
-
-grep("£", names(counts), value = TRUE)
 
 grep("%", names(counts), value = TRUE)
 
@@ -85,9 +79,8 @@ grep("\\+", names(counts), value = TRUE)
 
 grep("~", names(counts), value = TRUE)
 
-# TODO currency handling
-# TODO number handling
-# TODO language handling (words might be split due to non-a-z characters)
+# TODO number handling (numbers might already be split due to punctuation)
+# TODO language handling (words might already be split due to non-a-z characters)
 
 filter.words <- function(x, pattern) {
     return (
