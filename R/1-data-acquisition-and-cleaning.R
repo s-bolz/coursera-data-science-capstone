@@ -22,9 +22,13 @@ tokenize.file <- function(file, lan = "en", enc = "UTF-8", lines = -1) {
     # unify several common non-word-entities
     # (some regexes based upon http://www.regular-expressions.info/)
     # unify all URL's
-    raw <- gsub("(https?|ftp)://[^ ]+", "URL", raw)
+    raw <- gsub("(https?|ftp)://[^ ]+", " URL ", raw)
     # unify all email addresses
-    raw <- gsub("[^ ]+@[^ ]+\\.[^ \r\n\t.,;:'\"()?!]{2,}", "EMAIL", raw)
+    raw <- gsub("[^ ]+@[^ ]+\\.[^ \r\n\t.,;:'\"()?!]{2,}", " EMAIL ", raw)
+    # unify all twitter user
+    raw <- gsub("@[a-z0-9_]+", " TWITTERUSER ", raw)
+    # replace all remaining @ characters with "at"
+    raw <- gsub("@", " at ", raw)
     # unify all dates in format yyyy-[m]m-[d]d or [d]d-[m]m-yyyy
     raw <- gsub (
       paste (
@@ -32,24 +36,32 @@ tokenize.file <- function(file, lan = "en", enc = "UTF-8", lines = -1) {
         "(0?[1-9]|[12][0-9]|3[01])[- /.](0?[1-9]|1[012])[- /.](19|20)[0-9]{2})$",
         sep = ""
       ),
-      "DATE",
+      " DATE ",
       raw
     )
     # unify all tags
-    raw <- gsub("</*[a-z]>", "TAG", raw)
-    # replace all "$##" and "##$" with "## dollars"
-    raw <- gsub("\\$([0-9]+)", " \\1 dollars", raw)
+    raw <- gsub("</*[a-z]>", " TAG ", raw)
+    # replace all "$##" with "## dollars"
+    raw <- gsub("\\$([0-9.,]+)", " \\1 dollars ", raw)
     # replace all "##%" and "%##" with "## percent"
-    raw <- gsub("([0-9]+)%", " \\1 percent", raw)
-    raw <- gsub("%([0-9]+)", " \\1 percent", raw)
+    raw <- gsub("([0-9.,]+)%", " \\1 percent ", raw)
+    raw <- gsub("%([0-9.,]+)", " \\1 percent ", raw)
     # replace all remaining currency characters with currency string
     raw <- gsub("\\$", " dollars ", raw)
     raw <- gsub("€", " euros ", raw)
     raw <- gsub("£", " pounds ", raw)
+    # split words compounded with a "+"
+    raw <- gsub("([a-z]+)\\+([a-z]+)", " \\1 \\2 ", raw)
+    # replace multiple "+" characters with a space
+    raw <- gsub("\\+\\++", " ", raw)
+    # replace remaining "+" characters with "plus" string
+    raw <- gsub("\\+", " plus ", raw)
     # replace several characters with a space so that compound words are split
-    raw <- gsub("(-|/|&|<|>)", " ", raw)
+    raw <- gsub("(-|/|&|<|>|%|_)", " ", raw)
+    # unify all numbers
+    raw <- gsub("[0-9.,]+", " NUMBER ", raw)
     # delete all rare special characters that might complicate our dictionary
-    raw <- gsub("[^ a-zA-Z0-9.,;!?:'\"/()$€@£\t\n\r&%<>_+~-]", "", raw)
+    raw <- gsub("[^ a-zA-Z0-9.,;!?:'\"/()$€@£\t\n\r&%<>_+-]", "", raw)
     split <- unlist(strsplit(raw, "[ \r\n\t.,;:'\"()?!]"))
     return (
         split[split != ""]
@@ -62,27 +74,9 @@ tweets <- tokenize.file(file.tweets)
 
 counts <- table(c(blogs, news, tweets))
 
-counts[c("EMAIL", "URL", "DATE", "TAG")]
+counts[c("EMAIL", "URL", "DATE", "TAG", "TWITTERUSER", "NUMBER")]
 
-special.chars <- c("@", "%", "_", "\\+", "~")
-
-special.char.counts <- sapply(special.chars, function(char) { i <- grep(char, names(counts)) ; c(length(i), sum(counts[i])) })
-
-special.char.counts
-
-grep("@", names(counts), value = TRUE)
-
-grep("%", names(counts), value = TRUE)
-
-grep("_", names(counts), value = TRUE)
-
-grep("\\+", names(counts), value = TRUE)
-
-grep("~", names(counts), value = TRUE)
-
-# TODO number handling (numbers might already be split due to punctuation)
-# TODO language handling (words might already be split due to non-a-z characters)
-
+# removes all words from vector that match a given pattern
 filter.words <- function(x, pattern) {
     return (
         lapply(blog.sentences, function(x) {x[grep(pattern, x, invert = TRUE)]})
@@ -94,5 +88,20 @@ filter.words <- function(x, pattern) {
 bad.words <- readLines("data/profanity_words.txt")
 filter.pattern <- paste("^(", paste(bad.words, collapse = "|"), ")$", sep = "")
 
-# test with first three lines of blog posts
-#(blog.sentences.filtered <- filter.words(blog.sentences, filter.pattern))
+# TODO language handling (words might already be split due to non-a-z characters)
+
+# list of english words taken from http://www-01.sil.org/linguistics/wordlists/english/
+dict.en <- readLines("data/wordsEn.txt")
+dict.en <- c(dict.en, grep("[A-Z]", names(counts), value = TRUE))
+
+table(names(counts) %in% dict.en)
+sum(counts[names(counts) %in% dict.en])
+sum(counts[!names(counts) %in% dict.en])
+
+sort(counts[!names(counts) %in% dict.en], decreasing = TRUE)[1:100]
+
+grep("^[a-z]$", dict.en, value = TRUE)
+
+
+
+
