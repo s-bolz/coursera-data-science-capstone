@@ -20,7 +20,7 @@ tokenize.file <- function(file, lan = "en", enc = "UTF-8", lines = -1) {
     raw <- readLines(con = file, n = lines, encoding = enc)
     raw <- tolower(raw)
     # unify several common non-word-entities
-    # (based upon http://www.regular-expressions.info/)
+    # (some regexes based upon http://www.regular-expressions.info/)
     # unify all URL's
     raw <- gsub("(https?|ftp)://[^ ]+", "URL", raw)
     # unify all email addresses
@@ -35,14 +35,19 @@ tokenize.file <- function(file, lan = "en", enc = "UTF-8", lines = -1) {
       "DATE",
       raw
     )
-    # replace all "$##" with "## dollars"
+    # unify all tags
+    raw <- gsub("</*[a-z]>", "TAG", raw)
+    # replace all "$##" and "##$" with "## dollars"
     raw <- gsub("\\$([0-9]+)", " \\1 dollars", raw)
+    # replace all "##%" and "%##" with "## percent"
+    raw <- gsub("([0-9]+)%", " \\1 percent", raw)
+    raw <- gsub("%([0-9]+)", " \\1 percent", raw)
     # replace all remaining currency characters with currency string
     raw <- gsub("\\$", " dollars ", raw)
     raw <- gsub("€", " euros ", raw)
     raw <- gsub("£", " pounds ", raw)
-    # replace all dashes, slashes, and &'s with a space so that compound words are split
-    raw <- gsub("(-|/|&)", " ", raw)
+    # replace several characters with a space so that compound words are split
+    raw <- gsub("(-|/|&|<|>)", " ", raw)
     # delete all rare special characters that might complicate our dictionary
     raw <- gsub("[^ a-zA-Z0-9.,;!?:'\"/()$€@£\t\n\r&%<>_+~-]", "", raw)
     split <- unlist(strsplit(raw, "[ \r\n\t.,;:'\"()?!]"))
@@ -57,9 +62,9 @@ tweets <- tokenize.file(file.tweets)
 
 counts <- table(c(blogs, news, tweets))
 
-counts[c("EMAIL", "URL", "DATE")]
+counts[c("EMAIL", "URL", "DATE", "TAG")]
 
-special.chars <- c("@", "%", "<", ">", "_", "\\+", "~")
+special.chars <- c("@", "%", "_", "\\+", "~")
 
 special.char.counts <- sapply(special.chars, function(char) { i <- grep(char, names(counts)) ; c(length(i), sum(counts[i])) })
 
@@ -68,10 +73,6 @@ special.char.counts
 grep("@", names(counts), value = TRUE)
 
 grep("%", names(counts), value = TRUE)
-
-grep("<", names(counts), value = TRUE)
-
-grep(">", names(counts), value = TRUE)
 
 grep("_", names(counts), value = TRUE)
 
