@@ -71,10 +71,59 @@ tokenize.file <- function(file, lan = "en", enc = "UTF-8", lines = -1) {
 blogs <- tokenize.file(file.blogs)
 news <- tokenize.file(file.news)
 tweets <- tokenize.file(file.tweets)
+all <- c(blogs, news, tweets)
+rm(blogs, news, tweets)
 
-counts <- table(c(blogs, news, tweets))
+counts <- table(all)
 
 counts[c("EMAIL", "URL", "DATE", "TAG", "TWITTERUSER", "NUMBER")]
+
+# bad words list used by google in http://www.wdyl.com/
+# taken from https://gist.github.com/ryanlewis/a37739d710ccdb4b406d
+bad.words <- readLines("data/profanity_words.txt")
+filter.pattern <- paste("^(", paste(bad.words, collapse = "|"), ")$", sep = "")
+
+# merge lists of english words taken from
+#   - http://www-01.sil.org/linguistics/wordlists/english/
+#   - http://www-personal.umich.edu/~jlawler/wordlist
+dict.en <- c (
+    readLines("data/wordsEn.txt", encoding = "us-ascii"),
+    readLines("data/wordlist", encoding = "binary")
+)
+dict.en <- unique(c(dict.en, grep("[A-Z]", names(counts), value = TRUE)))
+dict.en <- unique(gsub("\\(.*\\)", "", dict.en))
+dict.en <- dict.en[-grep("[^a-zA-Z'.-]", dict.en)]
+dict.en <- unique(unlist(strsplit(dict.en, "-")))
+
+table(names(counts) %in% dict.en)
+sum(counts[names(counts) %in% dict.en])
+sum(counts[!names(counts) %in% dict.en])
+
+sort(counts[!names(counts) %in% dict.en], decreasing = TRUE)[1:100]
+
+# all words that are in dictionary remain the same
+words.in.dict <- all[all %in% dict.en]
+words.not.in.dict <- all[!all %in% dict.en]
+
+# all words that are in dictionary with removal of .' are changed to dictionary value
+mappings <- lapply (
+    unique(words.not.in.dict[words.not.in.dict %in% gsub("[.']", "", dict.en)]),
+    function(w) {
+        c(w, dict.en[grep(paste("^", w, "$", sep = ""), gsub("[.']", "", dict.en))])
+    }
+)
+mappings.not.in.dict <- lapply (
+    mappings,
+    function(m) {
+        i <- grep(paste("^", m[1], "$", sep = ""), words.not.in.dict)
+        data.frame(index = i, replacement = rep("november's", length(i)))
+    }
+)
+mappings.not.in.dict
+length(words.not.in.dict)
+
+# all words with removed trailing s that are in dictionary are changed to 's
+# check all remaining words that are not in dictionary
 
 # removes all words from vector that match a given pattern
 filter.words <- function(x, pattern) {
@@ -83,25 +132,86 @@ filter.words <- function(x, pattern) {
     )
 }
 
-# bad words list used by google in http://www.wdyl.com/
-# taken from https://gist.github.com/ryanlewis/a37739d710ccdb4b406d
-bad.words <- readLines("data/profanity_words.txt")
-filter.pattern <- paste("^(", paste(bad.words, collapse = "|"), ")$", sep = "")
+###############################################################################
 
-# TODO language handling (words might already be split due to non-a-z characters)
+library(XML)
 
-# list of english words taken from http://www-01.sil.org/linguistics/wordlists/english/
-dict.en <- readLines("data/wordsEn.txt")
-dict.en <- c(dict.en, grep("[A-Z]", names(counts), value = TRUE))
+# split the large files into smaller chunks manageable by Stanford's CoreNLP
+system("split -l 50000 data/final/en_US/en_US.blogs.txt blogs-part-")
+system("split -l 50000 data/final/en_US/en_US.news.txt news-part-")
+system("split -l 100000 data/final/en_US/en_US.twitter.txt tweets-part-")
+system("mv *-part-* data/final/en_US/")
 
-table(names(counts) %in% dict.en)
-sum(counts[names(counts) %in% dict.en])
-sum(counts[!names(counts) %in% dict.en])
+get.xml.as.data.frame <- function(file) {
+    xml <- xmlTreeParse(file, useInternalNodes = TRUE)
+    sentences <- numeric()
+    tokens <- numeric()
+    words <- character()
+    sentence.ids <- as.numeric (
+        xpathSApply(xml, "//sentence/@id")
+    )
+    for( sid in sentence.ids ) {
+        token.ids <- as.numeric (
+            xpathSApply (
+                xml,
+                paste("//sentence[@id='", sid, "']/tokens/token/@id", sep = "")
+            )
+        )
+        for( tid in token.ids ) {
+            word <- xpathSApply (
+                xml,
+                paste (
+                    "string(//sentence[@id='", sid,
+                    "']/tokens/token[@id='", tid,
+                    "']/word/text())",
+                    sep = ""
+                )
+            )
+            words <- c(words, word)
+        }
+        sentences <- c(sentences, rep(sid, length(token.ids)))
+        tokens <- c(tokens, token.ids)
+    }
+    data.frame (
+        sentence.id = sentences,
+        token.id = tokens,
+        word = words,
+        file = rep(file, length(words))
+    )
+}
 
-sort(counts[!names(counts) %in% dict.en], decreasing = TRUE)[1:100]
+cp <- paste("lib", paste(dir("lib/"), collapse = ":lib/"), sep = "/")
 
-grep("^[a-z]$", dict.en, value = TRUE)
+data <- data.frame (
+    sentence.id = numeric(),
+    token.id = numeric(),
+    word = character(),
+    file = character(),
+    stringsAsFactors = FALSE
+)
 
+for( file in grep("-part-[a-z]{2}$", dir("data/final/en_US/"), value = TRUE) ) {
+    system (
+        paste (
+            "java",
+            " -cp ", cp,
+            " -Xmx2g",
+            " edu.stanford.nlp.pipeline.StanfordCoreNLP",
+            " -props conf/CoreNLP.properties",
+            " -file data/final/en_US/",
+            file,
+            sep = ""
+        )
+    )
+    print(paste("tagged file", file))
+    data <- rbind (
+        data,
+        get.xml.as.data.frame(paste("data/final/en_US/", file, ".xml", sep = ""))
+    )
+    print(paste("loaded file", file))
+}
 
+df <- get.xml.as.data.frame("data/final/en_US/tweets-part-bv.xml")
 
-
+head(df, n = 20)
+readLines("data/final/en_US/tweets-part-bv", 1)

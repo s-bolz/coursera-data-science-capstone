@@ -1,2 +1,9 @@
-data/final
 data/task-1-env.RData
+data/final/de_DE/
+data/final/en_US/en_US.blogs.txt
+data/final/en_US/en_US.news.txt
+data/final/en_US/en_US.twitter.txt
+data/final/fi_FI/
+data/final/ru_RU/
+data/final/en_US/*-part-*.xml
+.Rhistory
